@@ -19,6 +19,7 @@ use acadrust::{
     CadDocument,
     entities::EntityType,
     types::{Color, LineWeight, Matrix3, Vector3},
+    xdata::{ExtendedData, XDataValue},
 };
 use anyhow::{Context, Result, bail};
 use geojson::{Feature, FeatureCollection, GeometryValue, JsonObject, JsonValue};
@@ -322,7 +323,60 @@ fn style_properties(
     if let Some(mm) = resolve_lineweight_mm(document, common.line_weight, layer, placement) {
         properties.push(("lineweight_mm", JsonValue::from(mm)));
     }
+    if let Some(xdata) = xdata_property(&common.extended_data) {
+        properties.push(("xdata", xdata));
+    }
     properties
+}
+
+/// XDATA (extended entity data) is where survey and GIS software keep per-entity values (an ID, a code, a
+/// level). Emitted as `{ "<application>": [values in file order] }`. Applications AutoCAD registers for its own
+/// bookkeeping (`ACAD`, `AcadAnnotative`, `AcDbBlockRepETag`, ...: annotation scaling, dimension overrides,
+/// dynamic-block tags) are drawing internals, not data, and are left out. None when nothing is left.
+fn xdata_property(extended_data: &ExtendedData) -> Option<JsonValue> {
+    let map: JsonObject = extended_data
+        .records()
+        .iter()
+        .filter(|record| {
+            !record.values.is_empty() && !is_autocad_xdata_app(&record.application_name)
+        })
+        .map(|record| {
+            (
+                record.application_name.clone(),
+                JsonValue::Array(record.values.iter().map(xdata_value).collect()),
+            )
+        })
+        .collect();
+    (!map.is_empty()).then_some(JsonValue::Object(map))
+}
+
+/// AutoCAD's own registered applications: every name it registers starts with `ACAD` or `AcDb`.
+fn is_autocad_xdata_app(name: &str) -> bool {
+    let upper = name.to_ascii_uppercase();
+    upper.starts_with("ACAD") || upper.starts_with("ACDB")
+}
+
+/// One XDATA value as JSON: text as text, numbers as numbers, points as `[x, y, z]`, a handle as its hex
+/// text (like the `handle` property), binary data as hex.
+fn xdata_value(value: &XDataValue) -> JsonValue {
+    match value {
+        XDataValue::String(text)
+        | XDataValue::ControlString(text)
+        | XDataValue::LayerName(text) => JsonValue::from(text.clone()),
+        XDataValue::BinaryData(bytes) => {
+            JsonValue::from(bytes.iter().map(|b| format!("{b:02X}")).collect::<String>())
+        }
+        XDataValue::Handle(handle) => JsonValue::from(format!("{handle}")),
+        XDataValue::Point3D(v)
+        | XDataValue::Position3D(v)
+        | XDataValue::Displacement3D(v)
+        | XDataValue::Direction3D(v) => JsonValue::from(vec![v.x, v.y, v.z]),
+        XDataValue::Real(n) | XDataValue::Distance(n) | XDataValue::ScaleFactor(n) => {
+            JsonValue::from(*n)
+        }
+        XDataValue::Integer16(n) => JsonValue::from(*n),
+        XDataValue::Integer32(n) => JsonValue::from(*n),
+    }
 }
 
 /// Apply the placement and project to 2D, tracking dropped |z|. None on
