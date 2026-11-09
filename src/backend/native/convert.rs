@@ -5211,7 +5211,7 @@ mod tests {
         let mut mtext = MText::new();
         mtext.value = r"{\fArial|b0;CORREDOR} SUL\Ptrecho \S1^2; km".to_string();
         mtext.insertion_point = Vector3::new(1.0, 2.0, 0.0);
-        match convert_entity(&EntityType::MText(mtext), &opts(false)) {
+        match convert_entity(&EntityType::MText(Box::new(mtext)), &opts(false)) {
             EntityOutcome::Converted {
                 geometry,
                 extra_properties,
@@ -5623,7 +5623,10 @@ mod tests {
             geometry,
             extra_properties,
             ..
-        } = convert_entity(&EntityType::MultiLeader(multileader), &opts(false))
+        } = convert_entity(
+            &EntityType::MultiLeader(Box::new(multileader)),
+            &opts(false),
+        )
         else {
             panic!("a multileader with a leader line must convert");
         };
@@ -5656,9 +5659,10 @@ mod tests {
         root.lines = vec![LeaderLine::from_points(0, vec![Vector3::ZERO])];
         multileader.context.leader_roots = vec![root];
 
-        let EntityOutcome::Converted { geometry, .. } =
-            convert_entity(&EntityType::MultiLeader(multileader), &opts(false))
-        else {
+        let EntityOutcome::Converted { geometry, .. } = convert_entity(
+            &EntityType::MultiLeader(Box::new(multileader)),
+            &opts(false),
+        ) else {
             panic!("a multileader with a leader line must convert");
         };
         let CadGeometry::MultiLine(lines) = geometry else {
@@ -5854,7 +5858,7 @@ mod tests {
         let mut datum = MText::new();
         datum.value = "{\\fArial|b0;DATUM:\\P  SIRGAS   2000}".to_string();
         document
-            .add_entity(EntityType::MText(datum))
+            .add_entity(EntityType::MText(Box::new(datum)))
             .expect("add model mtext");
         let mut stamp = Text::new();
         stamp.value = "UTM - SIRGAS-2000 - MC 33º W - FUSO 25 SUL".to_string();
@@ -6090,7 +6094,7 @@ mod tests {
         linear.base.block_name = block_name.to_string();
         linear.base.insertion_point = insertion_point;
         linear.base.common.layer = "DIMS".to_string();
-        EntityType::Dimension(Dimension::Linear(linear))
+        EntityType::Dimension(Box::new(Dimension::Linear(linear)))
     }
 
     #[test]
@@ -6590,7 +6594,7 @@ mod tests {
         hatch.paths.push(square_path((0.0, 0.0), (10.0, 10.0)));
         hatch.paths.push(square_path((2.0, 2.0), (4.0, 4.0)));
 
-        match convert_entity(&EntityType::Hatch(hatch), &opts(false)) {
+        match convert_entity(&EntityType::Hatch(Box::new(hatch)), &opts(false)) {
             EntityOutcome::Converted {
                 geometry,
                 extra_properties,
@@ -6626,7 +6630,7 @@ mod tests {
         hatch.paths.push(square_path((0.0, 0.0), (10.0, 10.0)));
         hatch.paths.push(square_path((20.0, 0.0), (30.0, 10.0)));
 
-        match convert_entity(&EntityType::Hatch(hatch), &opts(false)) {
+        match convert_entity(&EntityType::Hatch(Box::new(hatch)), &opts(false)) {
             EntityOutcome::Converted { geometry, .. } => {
                 let CadGeometry::MultiPolygon(coordinates) = geometry else {
                     panic!("expected MultiPolygon");
@@ -6660,7 +6664,7 @@ mod tests {
         let mut hatch = Hatch::new();
         hatch.paths.push(path);
 
-        match convert_entity(&EntityType::Hatch(hatch), &opts(false)) {
+        match convert_entity(&EntityType::Hatch(Box::new(hatch)), &opts(false)) {
             EntityOutcome::Converted {
                 geometry,
                 extra_properties,
@@ -6705,7 +6709,7 @@ mod tests {
         let mut hatch = Hatch::new();
         hatch.paths.push(path);
 
-        match convert_entity(&EntityType::Hatch(hatch), &opts(false)) {
+        match convert_entity(&EntityType::Hatch(Box::new(hatch)), &opts(false)) {
             EntityOutcome::Converted { warnings, .. } => {
                 assert!(
                     !warnings.iter().any(|w| w.contains("bridged")),
@@ -6735,7 +6739,7 @@ mod tests {
         let mut hatch = Hatch::new();
         hatch.paths.push(path);
 
-        match convert_entity(&EntityType::Hatch(hatch), &opts(false)) {
+        match convert_entity(&EntityType::Hatch(Box::new(hatch)), &opts(false)) {
             EntityOutcome::Skipped(reason) => {
                 assert!(reason.contains("no valid boundary loops"), "{reason}");
             }
@@ -6750,7 +6754,7 @@ mod tests {
         }));
         mixed.paths.push(square_path((0.0, 0.0), (10.0, 10.0)));
         mixed.paths.push(degenerate);
-        match convert_entity(&EntityType::Hatch(mixed), &opts(false)) {
+        match convert_entity(&EntityType::Hatch(Box::new(mixed)), &opts(false)) {
             EntityOutcome::Converted {
                 extra_properties,
                 warnings,
@@ -7149,7 +7153,7 @@ mod tests {
         )));
         hatch.paths.push(collinear);
 
-        match convert_entity(&EntityType::Hatch(hatch), &opts(false)) {
+        match convert_entity(&EntityType::Hatch(Box::new(hatch)), &opts(false)) {
             EntityOutcome::Converted {
                 geometry,
                 extra_properties,

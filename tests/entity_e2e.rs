@@ -301,7 +301,7 @@ fn mtext_survives_reader_to_output_conversion() {
     let output = convert_supported(
         EntityCase {
             fixture_name: "mtext",
-            entity: EntityType::MText(mtext),
+            entity: EntityType::MText(Box::new(mtext)),
             expected_entity_type: "MTEXT",
         },
         "Point",
@@ -458,7 +458,7 @@ fn hatch_survives_reader_to_output_conversion() {
     let output = convert_supported(
         EntityCase {
             fixture_name: "hatch",
-            entity: EntityType::Hatch(hatch),
+            entity: EntityType::Hatch(Box::new(hatch)),
             expected_entity_type: "HATCH",
         },
         "Polygon",

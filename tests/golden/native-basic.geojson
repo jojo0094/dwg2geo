@@ -19,12 +19,12 @@
         ],
         "type": "LineString"
       },
-      "id": "0x33",
+      "id": "0x34",
       "properties": {
         "color_index": 7,
         "color_rgb": "#FFFFFF",
         "entity_type": "LINE",
-        "handle": "0x33",
+        "handle": "0x34",
         "layer": "GEOMETRY",
         "linetype": "Continuous",
         "space": "model"
@@ -39,12 +39,12 @@
         ],
         "type": "Point"
       },
-      "id": "0x34",
+      "id": "0x35",
       "properties": {
         "color_index": 7,
         "color_rgb": "#FFFFFF",
         "entity_type": "POINT",
-        "handle": "0x34",
+        "handle": "0x35",
         "layer": "GEOMETRY",
         "linetype": "Continuous",
         "space": "model"
@@ -77,12 +77,12 @@
         ],
         "type": "LineString"
       },
-      "id": "0x35",
+      "id": "0x36",
       "properties": {
         "color_index": 7,
         "color_rgb": "#FFFFFF",
         "entity_type": "LWPOLYLINE",
-        "handle": "0x35",
+        "handle": "0x36",
         "is_closed": true,
         "layer": "GEOMETRY",
         "linetype": "Continuous",
@@ -132,13 +132,13 @@
         ],
         "type": "LineString"
       },
-      "id": "0x36",
+      "id": "0x37",
       "properties": {
         "approximated": true,
         "color_index": 7,
         "color_rgb": "#FFFFFF",
         "entity_type": "LWPOLYLINE",
-        "handle": "0x36",
+        "handle": "0x37",
         "is_closed": false,
         "layer": "GEOMETRY",
         "linetype": "Continuous",
@@ -255,13 +255,13 @@
         ],
         "type": "LineString"
       },
-      "id": "0x37",
+      "id": "0x38",
       "properties": {
         "approximated": true,
         "color_index": 7,
         "color_rgb": "#FFFFFF",
         "entity_type": "CIRCLE",
-        "handle": "0x37",
+        "handle": "0x38",
         "is_closed": true,
         "layer": "GEOMETRY",
         "linetype": "Continuous",
@@ -280,12 +280,12 @@
         ],
         "type": "Point"
       },
-      "id": "0x38",
+      "id": "0x39",
       "properties": {
         "color_index": 7,
         "color_rgb": "#FFFFFF",
         "entity_type": "TEXT",
-        "handle": "0x38",
+        "handle": "0x39",
         "layer": "ANNOTATION",
         "linetype": "Continuous",
         "space": "model",
@@ -310,13 +310,13 @@
         ],
         "type": "LineString"
       },
-      "id": "0x3B/0x3A",
+      "id": "0x3C/0x3B",
       "properties": {
         "block_path": "GOLDEN_BLOCK",
         "color_index": 7,
         "color_rgb": "#FFFFFF",
         "entity_type": "LINE",
-        "handle": "0x3A",
+        "handle": "0x3B",
         "layer": "BLOCKS",
         "linetype": "Continuous",
         "source_layer": "0",
