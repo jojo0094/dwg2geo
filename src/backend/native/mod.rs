@@ -25,6 +25,7 @@ use acadrust::{
     CadDocument,
     entities::EntityType,
     io::dwg::{DwgReadOptions, DwgReader},
+    io::dxf::{DxfReader, DxfReaderConfiguration},
     notification::NotificationType,
     objects::{GeoData, ObjectType},
     tables::block_record::BlockRecord,
@@ -386,6 +387,12 @@ pub(crate) fn read_document(path: &Path) -> Result<(CadDocument, ReadMode, Vec<S
 pub(crate) fn read_stream(bytes: &[u8]) -> Result<(CadDocument, ReadMode, Vec<String>)> {
     use std::io::Cursor;
 
+    // A DWG starts with its version ("AC10xx"); anything else is read as DXF (ASCII or binary) into the same
+    // document model, so everything after the read is identical for both formats.
+    if !bytes.starts_with(b"AC10") {
+        return read_dxf_stream(bytes);
+    }
+
     let mut reader = DwgReader::from_stream(Cursor::new(bytes.to_vec()));
     match reader.read() {
         Ok(document) => Ok((document, ReadMode::Strict, Vec::new())),
@@ -407,6 +414,42 @@ pub(crate) fn read_stream(bytes: &[u8]) -> Result<(CadDocument, ReadMode, Vec<St
                 )),
                 Err(failsafe_error) => Err(anyhow!(
                     "native backend cannot parse the drawing: strict error: {strict_error}; failsafe error: {failsafe_error}"
+                )),
+            }
+        }
+    }
+}
+
+/// Read a DXF (ASCII or binary) from bytes with the same strict-then-failsafe policy as [`read_stream`].
+fn read_dxf_stream(bytes: &[u8]) -> Result<(CadDocument, ReadMode, Vec<String>)> {
+    use std::io::Cursor;
+
+    let strict =
+        DxfReader::from_reader(Cursor::new(bytes.to_vec())).and_then(|reader| reader.read());
+    match strict {
+        Ok(document) => Ok((document, ReadMode::Strict, Vec::new())),
+        Err(strict_error) => {
+            let failsafe = DxfReader::from_reader(Cursor::new(bytes.to_vec())).and_then(|reader| {
+                reader
+                    .with_configuration(DxfReaderConfiguration {
+                        failsafe: true,
+                        ..Default::default()
+                    })
+                    .read()
+            });
+            match failsafe {
+                Ok(document) if document.entity_count() > 0 || document.layers.len() > 1 => Ok((
+                    document,
+                    ReadMode::FailsafeRecovery,
+                    vec![format!(
+                        "strict DXF parse failed ({strict_error}); results come from a failsafe re-read and may be incomplete"
+                    )],
+                )),
+                Ok(_) => Err(anyhow!(
+                    "cannot parse the drawing as DWG or DXF: strict DXF error: {strict_error}; a failsafe re-read recovered no drawing content"
+                )),
+                Err(failsafe_error) => Err(anyhow!(
+                    "cannot parse the drawing as DWG or DXF: strict DXF error: {strict_error}; failsafe error: {failsafe_error}"
                 )),
             }
         }
