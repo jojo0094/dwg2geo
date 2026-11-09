@@ -9,8 +9,9 @@
 
 use wasm_bindgen::prelude::*;
 
-/// Convert DWG bytes to a GeoJSON FeatureCollection (local drawing
-/// coordinates) plus a conversion report. Returns a JS object shaped like
+/// Convert DWG or DXF bytes (ASCII or binary DXF; the format is sniffed from
+/// the bytes) to a GeoJSON FeatureCollection (local drawing coordinates) plus a
+/// conversion report. Returns a JS object shaped like
 /// `dwg2geo::backend::native::EmbedResult`: `{ geojson, feature_count,
 /// model_space_entities, converted, skipped, failed, warnings, bbox,
 /// source_sha256, geodata, crs_text_hints }`. Reprojection is the caller's
