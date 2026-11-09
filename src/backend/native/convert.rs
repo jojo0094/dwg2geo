@@ -379,6 +379,46 @@ fn xdata_value(value: &XDataValue) -> JsonValue {
     }
 }
 
+/// The entity's height range in placed coordinates, from its 3D bounding box (whose corners go through the
+/// placement, so a block's own elevation and its insert's both count). None for a flat entity at z = 0, the
+/// 2D-drawing case, and for non-finite bounds.
+fn z_range(entity: &EntityType, placement: &Placement) -> Option<(f64, f64)> {
+    let bounds = entity.as_entity().bounding_box();
+    let (mut low, mut high) = (f64::INFINITY, f64::NEG_INFINITY);
+    for x in [bounds.min.x, bounds.max.x] {
+        for y in [bounds.min.y, bounds.max.y] {
+            for z in [bounds.min.z, bounds.max.z] {
+                let placed = placement.matrix.apply(Vector3::new(x, y, z)).z;
+                low = low.min(placed);
+                high = high.max(placed);
+            }
+        }
+    }
+    (low.is_finite() && high.is_finite()).then_some((low, high))
+}
+
+/// The heights the 2D output would otherwise drop: `z` for a point (and a block's insertion point),
+/// `elevation` for a shape at one height (a contour, a level line), `z_min`/`z_max` for one that varies (a 3D
+/// polyline, a sloping pipe). Nothing for a flat entity at z = 0, so 2D drawings gain no columns.
+fn height_properties(range: Option<(f64, f64)>, point: bool) -> Vec<(&'static str, JsonValue)> {
+    let Some((low, high)) = range else {
+        return Vec::new();
+    };
+    if low.abs() <= Z_EPSILON && high.abs() <= Z_EPSILON {
+        return Vec::new();
+    }
+    if point {
+        vec![("z", JsonValue::from(low))]
+    } else if (high - low).abs() <= Z_EPSILON * high.abs().max(1.0) {
+        vec![("elevation", JsonValue::from(low))]
+    } else {
+        vec![
+            ("z_min", JsonValue::from(low)),
+            ("z_max", JsonValue::from(high)),
+        ]
+    }
+}
+
 /// Apply the placement and project to 2D, tracking dropped |z|. None on
 /// non-finite results.
 fn project(placement: &Placement, point: Vector3, max_abs_z: &mut f64) -> Option<(f64, f64)> {
@@ -1491,6 +1531,10 @@ fn process_entity(
                 &layer,
                 placement,
             ));
+            extra_properties.extend(height_properties(
+                z_range(entity, placement),
+                matches!(geometry, CadGeometry::Point(_)),
+            ));
             extraction.feature_warnings += warnings.len();
             if extra_properties
                 .iter()
@@ -1901,6 +1945,7 @@ fn emit_insert_anchor(
 
     let mut warnings = Vec::new();
     push_z_warning(&mut warnings, max_abs_z);
+    let z = placement.matrix.apply(anchor).z;
 
     let mut extra_properties = vec![
         ("block_name", JsonValue::from(insert.block_name.clone())),
@@ -1916,6 +1961,7 @@ fn emit_insert_anchor(
             .collect();
         extra_properties.push(("attributes", JsonValue::Object(map)));
     }
+    extra_properties.extend(height_properties(Some((z, z)), true));
     let layer = effective_layer(&entity.common().layer, placement);
     extra_properties.extend(style_properties(
         document,
