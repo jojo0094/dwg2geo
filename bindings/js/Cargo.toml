@@ -8,7 +8,7 @@ authors = [
     "Diogo Bezerra <diogo.bezerra@ufpe.br>",
 ]
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.95"
 description = "Convert engineering DWG and DXF drawings to GeoJSON in the browser or Node (WebAssembly)"
 license = "MIT"
 repository = "https://github.com/milkway/dwg2geo"
@@ -23,6 +23,12 @@ dwg2geo = { path = "../..", version = "0.2.5", default-features = false, feature
 wasm-bindgen = "0.2"
 serde-wasm-bindgen = "0.6"
 console_error_panic_hook = "0.1"
+js-sys = "0.3"
+# CADCraft (MIT OR Apache-2.0), pinned: the drawing as drawn (`render`), from its own DXF reader and renderer.
+cadcraft-io = { git = "https://github.com/storytold/cadcraft", rev = "2f8f1861886412f529900b37e3f80f8d1e2af119" }
+cadcraft-render = { git = "https://github.com/storytold/cadcraft", rev = "2f8f1861886412f529900b37e3f80f8d1e2af119" }
+cadcraft-doc = { git = "https://github.com/storytold/cadcraft", rev = "2f8f1861886412f529900b37e3f80f8d1e2af119" }
+cadcraft-dwg = { git = "https://github.com/storytold/cadcraft", rev = "2f8f1861886412f529900b37e3f80f8d1e2af119" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.3", features = ["wasm_js"] }

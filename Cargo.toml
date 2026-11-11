@@ -69,3 +69,14 @@ proptest = "1"
 clap = { version = "4.6.3", features = ["derive"] }
 clap_complete = "4.6.7"
 clap_mangen = "0.3.0"
+
+# CADCraft's renderer (bindings/js `render`) reads DWG through its DWG bridge; the vendored copy builds it for wasm32.
+[patch."https://github.com/storytold/cadcraft"]
+cadcraft-dwg = { path = "vendor/cadcraft-dwg" }
+
+# craft-pdf (pulled in by cadcraft-io; unused here but compiled) needs CADCraft's patched PDF backends: the same
+# pins as CADCraft's own workspace root (Cargo applies only the root's patches).
+[patch.crates-io]
+krilla = { version = "=0.8.2", git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0" }
+hayro-syntax = { git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0" }
+hayro-jbig2 = { git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0" }

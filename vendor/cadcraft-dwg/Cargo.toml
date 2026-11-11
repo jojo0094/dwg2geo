@@ -1,0 +1,17 @@
+# Vendored from CADCraft (github.com/storytold/cadcraft, crates/dwg, rev 2f8f1861886412f529900b37e3f80f8d1e2af119),
+# MIT OR Apache-2.0. The workspace-inherited fields are written out, and the DWG bridge is built for wasm32 too
+# (upstream leaves acadrust out of its web build): see VENDORED.md.
+[package]
+name = "cadcraft-dwg"
+description = "CADCraft DWG bridge: converts DWG to and from DXF bytes using the acadrust crate (MPL-2.0, used unmodified)"
+version = "0.17.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+log = "0.4"
+
+[target.'cfg(not(all(target_os = "freebsd", target_arch = "aarch64")))'.dependencies]
+# MPL-2.0: used as an unmodified dependency only.
+acadrust = "0.6.6"
