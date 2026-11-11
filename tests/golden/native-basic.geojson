@@ -323,6 +323,30 @@
         "space": "model"
       },
       "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          80.0,
+          10.0
+        ],
+        "type": "Point"
+      },
+      "id": "0x3C",
+      "properties": {
+        "block_name": "GOLDEN_BLOCK",
+        "color_index": 7,
+        "color_rgb": "#FFFFFF",
+        "entity_type": "INSERT",
+        "handle": "0x3C",
+        "layer": "BLOCKS",
+        "linetype": "Continuous",
+        "rotation_deg": 90.0,
+        "space": "model",
+        "x_scale": 2.0,
+        "y_scale": 2.0
+      },
+      "type": "Feature"
     }
   ],
   "type": "FeatureCollection"

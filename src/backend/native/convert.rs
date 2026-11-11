@@ -419,6 +419,34 @@ fn height_properties(range: Option<(f64, f64)>, point: bool) -> Vec<(&'static st
     }
 }
 
+/// A line's heights at its two ENDS, in placed coordinates, in drawing order: `z_start` at the first vertex,
+/// `z_end` at the last. The order a line was drawn in is not the direction water flows, so `z_min`/`z_max` stay
+/// for the low and high end. For LINE and POLYLINE (2D heavy, 3D, generic); nothing for a flat line at z = 0.
+fn end_height_properties(entity: &EntityType, placement: &Placement) -> Vec<(&'static str, JsonValue)> {
+    let ends = match entity {
+        EntityType::Line(line) => Some((line.start, line.end)),
+        EntityType::Polyline3D(polyline) => polyline
+            .vertices
+            .first()
+            .zip(polyline.vertices.last())
+            .map(|(a, b)| (a.position, b.position)),
+        EntityType::Polyline(polyline) => polyline
+            .vertices
+            .first()
+            .zip(polyline.vertices.last())
+            .map(|(a, b)| (a.location, b.location)),
+        _ => None,
+    };
+    let Some((start, end)) = ends else {
+        return Vec::new();
+    };
+    let (zs, ze) = (placement.matrix.apply(start).z, placement.matrix.apply(end).z);
+    if !zs.is_finite() || !ze.is_finite() || (zs.abs() <= Z_EPSILON && ze.abs() <= Z_EPSILON) {
+        return Vec::new();
+    }
+    vec![("z_start", JsonValue::from(zs)), ("z_end", JsonValue::from(ze))]
+}
+
 /// Apply the placement and project to 2D, tracking dropped |z|. None on
 /// non-finite results.
 fn project(placement: &Placement, point: Vector3, max_abs_z: &mut f64) -> Option<(f64, f64)> {
@@ -1535,6 +1563,7 @@ fn process_entity(
                 z_range(entity, placement),
                 matches!(geometry, CadGeometry::Point(_)),
             ));
+            extra_properties.extend(end_height_properties(entity, placement));
             extraction.feature_warnings += warnings.len();
             if extra_properties
                 .iter()
@@ -1750,7 +1779,10 @@ fn process_insert(
     }
 
     extraction.inserts_expanded += 1;
-    if !attributes.is_empty() {
+    // One row per block in model space (a manhole, a valve, a meter), with its name, insertion point and height,
+    // rotation and scale, beside the parts it is drawn with. A block nested in another gets one only when it
+    // carries attributes (its outer block is the asset).
+    if !attributes.is_empty() || placement.block_path.is_empty() {
         emit_insert_anchor(
             document,
             entity,
@@ -1953,7 +1985,13 @@ fn emit_insert_anchor(
             "rotation_deg",
             JsonValue::from(insert.rotation.to_degrees()),
         ),
+        ("x_scale", JsonValue::from(insert.x_scale())),
+        ("y_scale", JsonValue::from(insert.y_scale())),
     ];
+    // A dynamic block is inserted as an anonymous copy ("*U1"): its definition's name is the one people know.
+    if let Some(name) = dynamic_block_name(document, &insert.block_name) {
+        extra_properties.push(("block_effective_name", JsonValue::from(name)));
+    }
     if !attributes.is_empty() {
         let map: JsonObject = attributes
             .iter()
@@ -1984,6 +2022,20 @@ fn emit_insert_anchor(
         warnings,
         placement,
     ))
+}
+
+/// The name of the dynamic block an anonymous block ("*U1") was made from; None for any other block.
+fn dynamic_block_name(document: &CadDocument, block_name: &str) -> Option<String> {
+    if !block_name.starts_with('*') {
+        return None;
+    }
+    let record = document.block_records.get(block_name)?;
+    let definition = document.dynamic_block_definition(record.handle)?;
+    document
+        .block_records
+        .iter()
+        .find(|r| r.handle == definition && r.name != block_name)
+        .map(|r| r.name.clone())
 }
 
 fn record_outcome(
@@ -5990,6 +6042,25 @@ mod tests {
         }
     }
 
+    /// The block PARTS only: every top-level INSERT also gets its own row (a point with its name and height), which
+    /// these expansion tests do not count. Asserts each such row is there before dropping it.
+    fn parts_only(mut extraction: super::Extraction) -> super::Extraction {
+        let rows = extraction
+            .features
+            .iter()
+            .filter(|f| f.entity_type == "INSERT" && f.block_path.is_empty())
+            .count();
+        assert!(rows >= 1 || extraction.inserts_expanded == 0, "a top-level INSERT has its own row");
+        extraction.features.retain(|f| !(f.entity_type == "INSERT" && f.block_path.is_empty()));
+        if let Some(n) = extraction.converted.get_mut("INSERT") {
+            *n -= rows;
+            if *n == 0 {
+                extraction.converted.remove("INSERT");
+            }
+        }
+        extraction
+    }
+
     /// Fold features through the incremental geometry-check helper.
     fn check_all(features: &[super::CadFeature]) -> crate::report::GeometryChecks {
         let mut checks = super::empty_geometry_checks();
@@ -6057,7 +6128,7 @@ mod tests {
             .add_entity(EntityType::Insert(insert))
             .expect("add insert");
 
-        let extraction = extract(&document, &opts(false)).expect("extract");
+        let extraction = parts_only(extract(&document, &opts(false)).expect("extract"));
 
         assert_eq!(extraction.inserts_expanded, 1);
         assert_eq!(extraction.features.len(), 1);
@@ -6214,7 +6285,7 @@ mod tests {
             )))
             .expect("add insert");
 
-        let extraction = extract(&document, &opts(false)).expect("extract");
+        let extraction = parts_only(extract(&document, &opts(false)).expect("extract"));
 
         assert_eq!(extraction.features.len(), 1);
         assert_eq!(extraction.converted.get("3DFACE"), Some(&1));
@@ -6267,7 +6338,7 @@ mod tests {
             )))
             .expect("add insert");
 
-        let extraction = extract(&document, &opts(false)).expect("extract");
+        let extraction = parts_only(extract(&document, &opts(false)).expect("extract"));
 
         assert_eq!(extraction.inserts_expanded, 2);
         assert_eq!(extraction.features.len(), 1);
@@ -6299,7 +6370,7 @@ mod tests {
         insert.common_mut().layer = "PIPES".to_string();
         document.add_entity(insert).expect("add insert");
 
-        let extraction = extract(&document, &opts(false)).expect("extract");
+        let extraction = parts_only(extract(&document, &opts(false)).expect("extract"));
 
         assert_eq!(extraction.features.len(), 1);
         let properties = props(&extraction.features[0]);
@@ -6361,7 +6432,7 @@ mod tests {
             .add_entity(EntityType::Insert(Insert::new("LOOP", Vector3::ZERO)))
             .expect("add insert");
 
-        let extraction = extract(&document, &opts(false)).expect("extract");
+        let extraction = parts_only(extract(&document, &opts(false)).expect("extract"));
 
         assert!(extraction.features.is_empty());
         assert!(
@@ -6418,7 +6489,7 @@ mod tests {
             .add_entity(EntityType::Insert(insert))
             .expect("add insert");
 
-        let extraction = extract(&document, &opts(false)).expect("extract");
+        let extraction = parts_only(extract(&document, &opts(false)).expect("extract"));
 
         assert_eq!(extraction.features.len(), 2);
         let points: Vec<_> = extraction
@@ -6495,7 +6566,7 @@ mod tests {
         loose_point.common_mut().linetype = "ByBlock".to_string();
         document.add_entity(loose_point).expect("add point");
 
-        let extraction = extract(&document, &opts(false)).expect("extract");
+        let extraction = parts_only(extract(&document, &opts(false)).expect("extract"));
 
         assert_eq!(extraction.features.len(), 2);
         let block_properties = props(&extraction.features[0]);
@@ -7046,7 +7117,7 @@ mod tests {
             .add_entity(EntityType::Insert(insert))
             .expect("add insert");
 
-        let extraction = extract(&document, &opts(false)).expect("extract");
+        let extraction = parts_only(extract(&document, &opts(false)).expect("extract"));
         assert_eq!(extraction.features.len(), 1);
         let geometry = &extraction.features[0].geometry;
         let CadGeometry::Point((x, y)) = geometry else {

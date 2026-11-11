@@ -1,8 +1,8 @@
 #![cfg(feature = "native-backend")]
 
 //! Heights: the output stays 2D, but a height the drawing carries is kept as a property — `z` for a point,
-//! `elevation` for a shape at one height, `z_min`/`z_max` for one that varies — from a DWG and a DXF alike.
-//! A flat entity at z = 0 gains nothing.
+//! `elevation` for a shape at one height, `z_min`/`z_max` for one that varies, and `z_start`/`z_end` at a line's two
+//! ends in drawing order — from a DWG and a DXF alike. A flat entity at z = 0 gains nothing.
 
 use acadrust::{
     CadDocument, DxfVersion,
@@ -22,6 +22,8 @@ fn drawing() -> CadDocument {
         EntityType::Circle(Circle::from_coords(20.0, 20.0, 7.0, 5.0)),
         EntityType::Line(Line::from_coords(0.0, 0.0, 1.0, 10.0, 0.0, 4.0)),
         EntityType::Line(Line::from_coords(0.0, 5.0, 0.0, 10.0, 5.0, 0.0)),
+        // drawn uphill: the order of its ends is the drawing's, not the flow's
+        EntityType::Line(Line::from_coords(0.0, 9.0, 6.0, 10.0, 9.0, 2.5)),
     ];
     for entity in entities {
         document.add_entity(entity).expect("entity");
@@ -29,7 +31,7 @@ fn drawing() -> CadDocument {
     document
 }
 
-const HEIGHT_KEYS: [&str; 4] = ["z", "elevation", "z_min", "z_max"];
+const HEIGHT_KEYS: [&str; 6] = ["z", "elevation", "z_min", "z_max", "z_start", "z_end"];
 
 /// Each feature's type and its height properties, ordered by type then by the properties.
 fn heights(bytes: &[u8]) -> Vec<(String, Value)> {
@@ -69,7 +71,8 @@ fn heights_are_kept_as_properties_from_dwg_and_dxf() {
 
     let expected = vec![
         ("CIRCLE".to_string(), json!({ "elevation": 7.0 })),
-        ("LINE".to_string(), json!({ "z_min": 1.0, "z_max": 4.0 })),
+        ("LINE".to_string(), json!({ "z_min": 2.5, "z_max": 6.0, "z_start": 6.0, "z_end": 2.5 })),
+        ("LINE".to_string(), json!({ "z_min": 1.0, "z_max": 4.0, "z_start": 1.0, "z_end": 4.0 })),
         ("LINE".to_string(), json!({})),
         ("POINT".to_string(), json!({ "z": 3.25 })),
     ];
