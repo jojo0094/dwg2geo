@@ -24,7 +24,7 @@ use acadrust::{
 use anyhow::{Context, Result, bail};
 use geojson::{Feature, FeatureCollection, GeometryValue, JsonObject, JsonValue};
 
-use super::model::{CadFeature, CadGeometry};
+use super::model::{CadFeature, CadGeometry, Heights};
 #[cfg(feature = "native-reproject")]
 use super::reproject::Reprojector;
 #[cfg(feature = "native-reproject")]
@@ -1550,7 +1550,7 @@ fn process_entity(
         EntityOutcome::Converted {
             geometry,
             mut extra_properties,
-            warnings,
+            mut warnings,
         } => {
             let layer = effective_layer(&entity.common().layer, placement);
             extra_properties.extend(style_properties(
@@ -1564,6 +1564,11 @@ fn process_entity(
                 matches!(geometry, CadGeometry::Point(_)),
             ));
             extra_properties.extend(end_height_properties(entity, placement));
+            // a feature whose positions carry their heights (3D output) has dropped no z
+            let heights = heights_of(entity, placement, z_range(entity, placement));
+            if heights.is_some() {
+                warnings.retain(|w| !w.starts_with(Z_DROPPED_WARNING));
+            }
             extraction.feature_warnings += warnings.len();
             if extra_properties
                 .iter()
@@ -1572,7 +1577,7 @@ fn process_entity(
                 extraction.approximated_features += 1;
             }
             *extraction.converted.entry(entity_type.clone()).or_default() += 1;
-            sink(build_feature(
+            let mut feature = build_feature(
                 entity,
                 feature_id,
                 &entity_type,
@@ -1580,7 +1585,9 @@ fn process_entity(
                 extra_properties,
                 warnings,
                 placement,
-            ))?;
+            );
+            feature.heights = heights;
+            sink(feature)?;
         }
         EntityOutcome::Skipped(reason) => {
             record_outcome(&mut extraction.skipped, entity_type, reason, &feature_id);
@@ -1976,8 +1983,11 @@ fn emit_insert_anchor(
     };
 
     let mut warnings = Vec::new();
-    push_z_warning(&mut warnings, max_abs_z);
     let z = placement.matrix.apply(anchor).z;
+    // the point is written with its z (Heights::Constant below): nothing is dropped
+    if !(z.abs() > Z_EPSILON && z.is_finite()) {
+        push_z_warning(&mut warnings, max_abs_z);
+    }
 
     let mut extra_properties = vec![
         ("block_name", JsonValue::from(insert.block_name.clone())),
@@ -2013,7 +2023,7 @@ fn emit_insert_anchor(
         .converted
         .entry("INSERT".to_string())
         .or_default() += 1;
-    sink(build_feature(
+    let mut feature = build_feature(
         entity,
         id,
         "INSERT",
@@ -2021,7 +2031,9 @@ fn emit_insert_anchor(
         extra_properties,
         warnings,
         placement,
-    ))
+    );
+    feature.heights = (z.abs() > Z_EPSILON && z.is_finite()).then_some(Heights::Constant(z));
+    sink(feature)
 }
 
 /// The name an anonymous block ("*U1") is known by: the dynamic block it was made from, else the one block it
@@ -2081,7 +2093,34 @@ fn build_feature(
         extra_properties,
         warnings,
         geometry,
+        heights: None,
     }
+}
+
+/// The heights a feature's positions take (model.rs Heights): one height for an entity at one level, each vertex's
+/// own for a line, a 3D polyline and a 3D face; None for a flat entity at z = 0 (it stays 2D) and for a varying
+/// entity whose vertices are not read here (its z_min / z_max still say its range).
+fn heights_of(entity: &EntityType, placement: &Placement, range: Option<(f64, f64)>) -> Option<Heights> {
+    let (low, high) = range?;
+    if low.abs() <= Z_EPSILON && high.abs() <= Z_EPSILON {
+        return None;
+    }
+    if (high - low).abs() <= Z_EPSILON * high.abs().max(1.0) {
+        return Some(Heights::Constant(low));
+    }
+    let points: Vec<Vector3> = match entity {
+        EntityType::Line(line) => vec![line.start, line.end],
+        EntityType::Polyline3D(polyline) => polyline.vertices.iter().map(|v| v.position).collect(),
+        EntityType::Polyline(polyline) => polyline.vertices.iter().map(|v| v.location).collect(),
+        EntityType::Face3D(face) => vec![face.first_corner, face.second_corner, face.third_corner, face.fourth_corner],
+        _ => return None,
+    };
+    let mut ignored = 0.0;
+    let vertices: Vec<((f64, f64), f64)> = points
+        .into_iter()
+        .filter_map(|p| Some((project(placement, p, &mut ignored)?, placement.matrix.apply(p).z)))
+        .collect();
+    (!vertices.is_empty()).then_some(Heights::ByVertex(vertices))
 }
 
 fn convert_entity(
@@ -4523,9 +4562,12 @@ fn finish_curve(
     finish_coordinates(coordinates, closed, true, options, placement, warnings)
 }
 
+/// Said of a feature whose heights the output does not carry (a varying entity whose vertices are not read).
+const Z_DROPPED_WARNING: &str = "non-zero z coordinates dropped (output is 2D)";
+
 fn push_z_warning(warnings: &mut Vec<String>, max_abs_z: f64) {
     if max_abs_z > Z_EPSILON {
-        warnings.push("non-zero z coordinates dropped (output is 2D)".to_string());
+        warnings.push(Z_DROPPED_WARNING.to_string());
     }
 }
 
@@ -6045,6 +6087,7 @@ mod tests {
             extra_properties: Vec::new(),
             warnings: Vec::new(),
             geometry,
+            heights: None,
         }
     }
 

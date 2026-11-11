@@ -368,11 +368,12 @@ fn polyline3d_survives_reader_to_output_conversion() {
         3,
         "Polyline3D vertices must survive the DWG round trip: {feature}"
     );
+    // a 3D polyline keeps each vertex's height: x, y, z (the output is 3D wherever heights are real)
+    let zs: Vec<f64> = positions.iter().map(|p| p.as_array().unwrap()[2].as_f64().unwrap()).collect();
+    assert_eq!(zs, vec![2.0, 3.0, 4.0], "Polyline3D vertices keep their heights: {feature}");
     assert!(
-        positions.iter().all(|position| position
-            .as_array()
-            .is_some_and(|position| position.len() == 2)),
-        "Polyline3D must follow the converter's XY output policy: {feature}"
+        !feature["properties"]["warnings"].to_string().contains("dropped"),
+        "no height is dropped, so no warning says one is: {feature}"
     );
 }
 

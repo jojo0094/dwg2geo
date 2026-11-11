@@ -79,3 +79,61 @@ fn heights_are_kept_as_properties_from_dwg_and_dxf() {
     assert_eq!(heights(&std::fs::read(&dxf).unwrap()), expected, "from DXF");
     assert_eq!(heights(&std::fs::read(&dwg).unwrap()), expected, "from DWG");
 }
+
+/// Each feature's coordinates, by type, flattened (x, y, z, ...), from a converted drawing.
+fn coordinates(bytes: &[u8]) -> Vec<(String, Vec<Vec<f64>>)> {
+    let result = dwg2geo::backend::native::convert_bytes(bytes, true, None).expect("converts");
+    let value: Value = serde_json::from_str(&result.geojson).expect("GeoJSON");
+    fn positions(v: &Value, out: &mut Vec<Vec<f64>>) {
+        match v.as_array() {
+            Some(items) if items.first().is_some_and(|x| x.is_number()) => out.push(items.iter().map(|x| x.as_f64().unwrap()).collect()),
+            Some(items) => items.iter().for_each(|x| positions(x, out)),
+            None => {}
+        }
+    }
+    value["features"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| {
+            let mut out = Vec::new();
+            positions(&f["geometry"]["coordinates"], &mut out);
+            (f["properties"]["entity_type"].as_str().unwrap().to_string(), out)
+        })
+        .collect()
+}
+
+#[test]
+fn every_position_keeps_its_own_height_from_dwg_and_dxf() {
+    use acadrust::{Vector3, entities::Face3D};
+    let mut document = drawing();
+    // a TIN face: three corners at three heights
+    document
+        .add_entity(EntityType::Face3D(Face3D::triangle(
+            Vector3::new(0.0, 0.0, 42.6),
+            Vector3::new(4.0, 0.0, 42.7),
+            Vector3::new(0.0, 3.0, 42.9),
+        )))
+        .expect("face");
+    let dir = TempDir::new().expect("temp dir");
+    let dxf = dir.path().join("v.dxf");
+    write_dxf(&document, &dxf).expect("dxf");
+    let dwg = dir.path().join("v.dwg");
+    let reread = DxfReader::from_file(&dxf).expect("open").read().expect("read");
+    DwgWriter::write_to_file(&dwg, &reread).expect("dwg");
+
+    for (label, path) in [("DXF", &dxf), ("DWG", &dwg)] {
+        let all = coordinates(&std::fs::read(path).unwrap());
+        let of = |t: &str| all.iter().filter(|(k, _)| k == t).map(|(_, c)| c.clone()).collect::<Vec<_>>();
+        // the face: each corner its own z (the ring closes on its first corner)
+        let face = &of("3DFACE")[0];
+        let z_at = |x: f64, y: f64| face.iter().find(|p| p[0] == x && p[1] == y).map(|p| p[2]);
+        assert_eq!((z_at(0.0, 0.0), z_at(4.0, 0.0), z_at(0.0, 3.0)), (Some(42.6), Some(42.7), Some(42.9)), "{label}: {face:?}");
+        // a line drawn uphill: its two ends, in its order
+        let lines = of("LINE");
+        assert!(lines.iter().any(|l| l == &vec![vec![0.0, 9.0, 6.0], vec![10.0, 9.0, 2.5]]), "{label}: {lines:?}");
+        // a point keeps its z; a flat line at z = 0 stays 2D
+        assert!(of("POINT").iter().all(|p| p == &vec![vec![5.0, 6.0, 3.25]]), "{label}");
+        assert!(lines.iter().any(|l| l.iter().all(|p| p.len() == 2)), "{label}: a flat line stays 2D");
+    }
+}

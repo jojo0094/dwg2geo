@@ -157,4 +157,39 @@ pub struct CadFeature {
     /// Human-readable conversion warnings.
     pub warnings: Vec<String>,
     pub geometry: CadGeometry,
+    /// The heights of the geometry's positions, when the entity has any off z = 0: the GeoJSON is then 3D
+    /// (x, y, z) — a TIN face's three corners, a pipe's two inverts, a contour at its level. None: 2D.
+    pub heights: Option<Heights>,
+}
+
+/// Where a feature's z values come from (writer.rs makes each position x, y, z with them).
+#[derive(Debug, Clone, PartialEq)]
+pub enum Heights {
+    /// Every position at one height (a contour, a point, a block's insertion point).
+    Constant(f64),
+    /// Each source vertex's projected (x, y) and its z: a position takes the z of the vertex at its place
+    /// (the same projection made both, so the match is exact), else of the nearest vertex.
+    ByVertex(Vec<((f64, f64), f64)>),
+}
+
+impl Heights {
+    /// The z at a position.
+    pub fn z_at(&self, x: f64, y: f64) -> f64 {
+        match self {
+            Heights::Constant(z) => *z,
+            Heights::ByVertex(vertices) => {
+                let mut best = (f64::INFINITY, 0.0);
+                for ((vx, vy), z) in vertices {
+                    let d = (vx - x).powi(2) + (vy - y).powi(2);
+                    if d == 0.0 {
+                        return *z;
+                    }
+                    if d < best.0 {
+                        best = (d, *z);
+                    }
+                }
+                best.1
+            }
+        }
+    }
 }

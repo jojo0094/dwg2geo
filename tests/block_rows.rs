@@ -78,6 +78,6 @@ fn every_block_in_model_space_is_a_row() {
         assert_eq!(p["z"].as_f64(), Some(46.3), "{label}");
         assert!((p["rotation_deg"].as_f64().unwrap() - 90.0).abs() < 1e-9, "{label}");
         assert_eq!(p["x_scale"].as_f64(), Some(1.0), "{label}");
-        assert_eq!(rows[2]["geometry"]["coordinates"], serde_json::json!([10.0, 20.0]), "{label}");
+        assert_eq!(rows[2]["geometry"]["coordinates"], serde_json::json!([10.0, 20.0, 46.3]), "{label}: the insertion point keeps its height");
     }
 }

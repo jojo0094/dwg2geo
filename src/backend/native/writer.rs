@@ -5,7 +5,7 @@
 
 use geojson::{Feature, Geometry, GeometryValue, JsonObject, JsonValue, feature::Id};
 
-use super::model::{CadFeature, CadGeometry};
+use super::model::{CadFeature, CadGeometry, Heights};
 
 pub fn to_geojson(feature: &CadFeature) -> Feature {
     let mut properties = JsonObject::new();
@@ -43,7 +43,10 @@ pub fn to_geojson(feature: &CadFeature) -> Feature {
 
     Feature {
         bbox: None,
-        geometry: Some(Geometry::new(geometry_to_geojson(&feature.geometry))),
+        geometry: Some(Geometry::new(match &feature.heights {
+            Some(heights) => geometry_to_geojson_3d(&feature.geometry, heights),
+            None => geometry_to_geojson(&feature.geometry),
+        })),
         id: Some(Id::String(feature.id.clone())),
         properties: Some(properties),
         foreign_members: None,
@@ -57,5 +60,19 @@ fn geometry_to_geojson(geometry: &CadGeometry) -> GeometryValue {
         CadGeometry::MultiLine(lines) => GeometryValue::new_multi_line_string(lines.clone()),
         CadGeometry::Polygon(rings) => GeometryValue::new_polygon(rings.clone()),
         CadGeometry::MultiPolygon(polygons) => GeometryValue::new_multi_polygon(polygons.clone()),
+    }
+}
+
+/// The geometry with a z on every position (Heights): a 3D GeoJSON geometry, as RFC 7946 allows.
+fn geometry_to_geojson_3d(geometry: &CadGeometry, heights: &Heights) -> GeometryValue {
+    let at = |&(x, y): &(f64, f64)| [x, y, heights.z_at(x, y)];
+    let path = |line: &Vec<(f64, f64)>| line.iter().map(at).collect::<Vec<_>>();
+    let rings = |rings: &Vec<Vec<(f64, f64)>>| rings.iter().map(path).collect::<Vec<_>>();
+    match geometry {
+        CadGeometry::Point(position) => GeometryValue::new_point(at(position)),
+        CadGeometry::Line(line) => GeometryValue::new_line_string(path(line)),
+        CadGeometry::MultiLine(lines) => GeometryValue::new_multi_line_string(lines.iter().map(path).collect::<Vec<_>>()),
+        CadGeometry::Polygon(polygon) => GeometryValue::new_polygon(rings(polygon)),
+        CadGeometry::MultiPolygon(polygons) => GeometryValue::new_multi_polygon(polygons.iter().map(rings).collect::<Vec<_>>()),
     }
 }
