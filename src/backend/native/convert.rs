@@ -2024,18 +2024,24 @@ fn emit_insert_anchor(
     ))
 }
 
-/// The name of the dynamic block an anonymous block ("*U1") was made from; None for any other block.
+/// The name an anonymous block ("*U1") is known by: the dynamic block it was made from, else the one block it
+/// wraps (a Civil 3D export or an annotation copy puts a single named block inside "*U1"). None for any other block.
 fn dynamic_block_name(document: &CadDocument, block_name: &str) -> Option<String> {
     if !block_name.starts_with('*') {
         return None;
     }
     let record = document.block_records.get(block_name)?;
-    let definition = document.dynamic_block_definition(record.handle)?;
-    document
-        .block_records
-        .iter()
-        .find(|r| r.handle == definition && r.name != block_name)
-        .map(|r| r.name.clone())
+    if let Some(definition) = document.dynamic_block_definition(record.handle) {
+        if let Some(r) = document.block_records.iter().find(|r| r.handle == definition && r.name != block_name) {
+            return Some(r.name.clone());
+        }
+    }
+    let mut wrapped = record.entity_handles.iter().filter_map(|h| match document.get_entity(*h) {
+        Some(EntityType::Insert(inner)) => Some(inner.block_name.clone()),
+        _ => None,
+    });
+    let first = wrapped.next()?;
+    (wrapped.all(|n| n == first) && !first.starts_with('*')).then_some(first)
 }
 
 fn record_outcome(

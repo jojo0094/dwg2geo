@@ -31,6 +31,18 @@ fn drawing() -> CadDocument {
     document
         .add_entity(EntityType::Insert(Insert::new("VALVE", Vector3::new(30.0, 20.0, 45.9))))
         .expect("insert");
+    // an anonymous block wrapping one named block (as Civil 3D exports a manhole): known by the wrapped name
+    let mut wrapper = BlockRecord::new("*U7");
+    wrapper.handle = document.allocate_handle();
+    wrapper.base_point = Vector3::ZERO;
+    let wrapper_owner = wrapper.handle;
+    document.block_records.add(wrapper).expect("anonymous block");
+    let mut inner = EntityType::Insert(Insert::new("VALVE", Vector3::ZERO));
+    inner.common_mut().owner_handle = wrapper_owner;
+    document.add_entity(inner).expect("wrapped insert");
+    document
+        .add_entity(EntityType::Insert(Insert::new("*U7", Vector3::new(50.0, 20.0, 44.0))))
+        .expect("anonymous insert");
     document
 }
 
@@ -59,12 +71,13 @@ fn every_block_in_model_space_is_a_row() {
 
     for (label, path) in [("DXF", &dxf), ("DWG", &dwg)] {
         let rows = inserts(&std::fs::read(path).unwrap());
-        assert_eq!(rows.len(), 2, "{label}: one row per insert");
-        let p = &rows[1]["properties"];
+        assert_eq!(rows.len(), 3, "{label}: one row per insert in model space; the wrapped one has none");
+        assert_eq!(rows[0]["properties"]["block_effective_name"], "VALVE", "{label}: *U7 is known by the block it wraps");
+        let p = &rows[2]["properties"];
         assert_eq!(p["block_name"], "VALVE", "{label}");
         assert_eq!(p["z"].as_f64(), Some(46.3), "{label}");
         assert!((p["rotation_deg"].as_f64().unwrap() - 90.0).abs() < 1e-9, "{label}");
         assert_eq!(p["x_scale"].as_f64(), Some(1.0), "{label}");
-        assert_eq!(rows[1]["geometry"]["coordinates"], serde_json::json!([10.0, 20.0]), "{label}");
+        assert_eq!(rows[2]["geometry"]["coordinates"], serde_json::json!([10.0, 20.0]), "{label}");
     }
 }
